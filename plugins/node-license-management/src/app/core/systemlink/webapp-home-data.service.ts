@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Inject, Injectable, LOCALE_ID } from '@angular/core';
 import { querySystems } from '@ni/systemlink-clients-ts/systems-management';
 import {
   createClient as createSystemsManagementClient,
@@ -116,6 +116,11 @@ const VIRTUAL_PROJECTION =
 const NULL_HOST_TOKEN = '\u0000NULL_HOST';
 const EMPTY_HOST_TOKEN = '\u0000EMPTY_HOST';
 
+/** Medium date + time in the browser's time zone and SystemLink language, like SystemLink tables. */
+function formatTimestamp(date: Date | null, locale: string): string {
+  return date ? date.toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'medium' }) : '';
+}
+
 @Injectable({ providedIn: 'root' })
 export class WebappHomeDataService {
   /** Cached across calls: whether the target instance supports the virtual node concept (SLE only). */
@@ -129,7 +134,10 @@ export class WebappHomeDataService {
   private readonly requestWaiters: (() => void)[] = [];
   readonly isDemoMode = this.isLocalDemoRequested();
 
-  constructor(private readonly context: SystemLinkContextService) {
+  constructor(
+    private readonly context: SystemLinkContextService,
+    @Inject(LOCALE_ID) private readonly locale: string,
+  ) {
     const fetchWithContext: typeof fetch = (input, init) =>
       this.fetchWithRetry(
         input,
@@ -161,7 +169,7 @@ export class WebappHomeDataService {
 
   async load(): Promise<HomePageModel> {
     if (this.isDemoMode) {
-      return createDemoHomePageModel();
+      return createDemoHomePageModel(this.locale);
     }
 
     const now = new Date();
@@ -415,7 +423,7 @@ export class WebappHomeDataService {
         body: { filter, skip, take: PAGE_SIZE, projection },
       });
       if (!response.response.ok) {
-        throw new Error(`query-systems failed (${response.response.status})`);
+        throw new Error($localize`query-systems failed (${response.response.status}:status:)`);
       }
       const data = this.systemRecordsFromResponse(response.data);
       if (data.length === 0) {
@@ -475,7 +483,7 @@ export class WebappHomeDataService {
         continuationToken,
       });
       if (!response.response.ok) {
-        throw new Error(`query-results failed (${response.response.status})`);
+        throw new Error($localize`query-results failed (${response.response.status}:status:)`);
       }
       const results = (response.data?.results ?? []) as ResultIdentity[];
       identities.push(...results);
@@ -641,6 +649,8 @@ export class WebappHomeDataService {
     const id = record.id ?? '';
     // Keep the NULL/empty sentinel out of the DOM; the clean predicate lives in resultFilter.
     const isToken = record.hostRaw === NULL_HOST_TOKEN || record.hostRaw === EMPTY_HOST_TOKEN;
+    const tokenLabel =
+      record.hostRaw === NULL_HOST_TOKEN ? $localize`(no host name)` : $localize`(empty host name)`;
     return {
       rowId: `${index}`,
       id,
@@ -648,15 +658,15 @@ export class WebappHomeDataService {
       // Show the friendly alias; for real systems with no alias fall back to the host, never the raw id.
       alias: (record.alias ?? '').trim() || (id ? record.host : ''),
       // Display the original host casing (hostRaw); the uppercased host is only an internal de-dup key.
-      hostName: isToken ? record.host : record.hostRaw,
+      hostName: isToken ? tokenLabel : record.hostRaw,
       hostRaw: isToken ? '' : record.hostRaw,
       nodeType: record.nodeType,
       status: record.status,
-      registered: this.formatTimestamp(record.created),
-      lastActive: this.formatTimestamp(record.lastUpdated),
+      registered: formatTimestamp(record.created, this.locale),
+      lastActive: formatTimestamp(record.lastUpdated, this.locale),
       lastActiveIso: record.lastUpdated ? record.lastUpdated.toISOString() : '',
       resultUrl: record.resultUrl ?? '',
-      resultLabel: record.resultUrl ? 'View Result' : '',
+      resultLabel: record.resultUrl ? $localize`View Result` : '',
     };
   }
 
@@ -729,22 +739,6 @@ export class WebappHomeDataService {
 
   private yearMonthUtc(date: Date): string {
     return `${date.getUTCFullYear()}-${this.pad(date.getUTCMonth() + 1)}`;
-  }
-
-  private formatTimestamp(date: Date | null): string {
-    if (!date) {
-      return '';
-    }
-    // Display in the browser's local timezone to match how SystemLink shows timestamps.
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-    });
   }
 
   private pad(value: number): string {

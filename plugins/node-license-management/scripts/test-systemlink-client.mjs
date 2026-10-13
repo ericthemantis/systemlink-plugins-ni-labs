@@ -1,4 +1,6 @@
 import '@angular/compiler';
+import '@angular/localize/init';
+import { clearTranslations, loadTranslations } from '@angular/localize';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -24,7 +26,7 @@ try {
   const service = new WebappHomeDataService({
     origin: window.location.origin,
     buildRequestInit: (init) => ({ ...init, credentials: 'include' }),
-  });
+  }, 'de');
   const delays = [];
   service.delay = async (ms) => { delays.push(ms); };
 
@@ -93,6 +95,15 @@ try {
   await assert.rejects(service.queryAllSystems('id != null', 'new(id)'), (error) => error === networkError);
   await assert.rejects(service.queryTestResults({ take: 1 }), (error) => error === networkError);
   assert.equal(service.activeRequests, 0);
+
+  loadTranslations({
+    '7827499803604543106': 'query-systems fehlgeschlagen ({$status})',
+    '6880065366354456535': 'query-results fehlgeschlagen ({$status})',
+  });
+  globalThis.fetch = async () => new Response('{}', { status: 400 });
+  await assert.rejects(service.queryAllSystems('id != null', 'new(id)'), /query-systems fehlgeschlagen \(400\)/);
+  await assert.rejects(service.queryResultIdentities(new Date(0), new Date()), /query-results fehlgeschlagen \(400\)/);
+  clearTranslations();
 
   let active = 0;
   let peak = 0;
