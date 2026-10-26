@@ -613,7 +613,12 @@ export class WebappHomeDataService {
   }
 
   private resultUrlFromId(id: string): string {
-    return `${this.context.origin}/testinsights/results/result/${id}`;
+    // Determine the URL format based on whether virtual nodes are supported (SLE).
+    const isSle = this.virtualNodesSupported === true;
+    if (isSle) {
+      return `${this.context.origin}/testinsights/results/result/${id}`;
+    }
+    return `${this.context.origin}/#testmonitor/testresults/testresult/${id}`;
   }
 
   /** Latest result (timestamp + id) for a hostName/systemId predicate, bounded to the window. */
